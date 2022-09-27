@@ -215,100 +215,63 @@ def check_skew(df_skew, column):
     print("{}'s: Skew: {}, : {}".format(column, skew, skewtest))
     return
 
+def show_values(axs, orient="v", space=.01):
+    def _single(ax):
+        if orient == "v":
+            for p in ax.patches:
+                _x = p.get_x() + p.get_width() / 2
+                _y = p.get_y() + p.get_height() + (p.get_height()*0.01)
+                value = '{:.2f}'.format(p.get_height())
+                ax.text(_x, _y, value, ha="center")
+        elif orient == "h":
+            for p in ax.patches:
+                _x = p.get_x() + p.get_width() + float(space)
+                _y = p.get_y() + p.get_height() - (p.get_height()*0.5)
+                value = '{:.2f}'.format(p.get_width())
+                ax.text(_x, _y, value, ha="left")
+
+    if isinstance(axs, np.ndarray):
+        for idx, ax in np.ndenumerate(axs):
+            _single(ax)
+    else:
+        _single(axs)
 
 resume = pd.read_csv("_resume/resume.csv")
 df = resume.copy()
 
 check_df(df)
 
-len(df)
+df = df.dropna(axis=1)
 
-# job_ad_id
-# Unique ID associated with the advertisement.
-#
-# job_city
-# City where the job was located.
-#
-# job_industry
-# Industry of the job.
-#
-# job_type
-# Type of role.
-#
-# job_fed_contractor
-# Indicator for if the employer is a federal contractor.
-#
-# job_equal_opp_employer
-# Indicator for if the employer is an Equal Opportunity Employer.
-#
-# job_ownership
-# The type of company, e.g. a nonprofit or a private company.
-#
-# job_req_any
-# Indicator for if any job requirements are listed. If so, the other job_req_* fields give more detail.
-#
-# job_req_communication
-# Indicator for if communication skills are required.
-#
-# job_req_education
-# Indicator for if some level of education is required.
-#
-# job_req_min_experience
-# Amount of experience required.
-#
-# job_req_computer
-# Indicator for if computer skills are required.
-#
-# job_req_organization
-# Indicator for if organization skills are required.
-#
-# job_req_school
-# Level of education required.
-#
-# received_callback
-# Indicator for if there was a callback from the job posting for the person listed on this resume.
-#
-# firstname
-# The first name used on the resume.
-#
-# race
-# Inferred race associated with the first name on the resume.
-#
-# gender
-# Inferred gender associated with the first name on the resume.
-#
-# years_college
-# Years of college education listed on the resume.
-#
-# college_degree
-# Indicator for if the resume listed a college degree.
-#
-# honors
-# Indicator for if the resume listed that the candidate has been awarded some honors.
-#
-# worked_during_school
-# Indicator for if the resume listed working while in school.
-#
-# years_experience
-# Years of experience listed on the resume.
-#
-# computer_skills
-# Indicator for if computer skills were listed on the resume. These skills were adapted for listings, though the skills were assigned independently of other details on the resume.
-#
-# special_skills
-# Indicator for if any special skills were listed on the resume.
-#
-# volunteer
-# Indicator for if volunteering was listed on the resume.
-#
-# military
-# Indicator for if military experience was listed on the resume.
-#
-# employment_holes
-# Indicator for if there were holes in the person's employment history.
-#
-# has_email_address
-# Indicator for if the resume lists an email address.
-#
-# resume_quality
-# Each resume was generally classified as either lower or higher quality.
+binary_cols = [col for col in df.columns if df[col].nunique() == 2 and df[col].dtypes == "object"]
+
+df.loc[df["received_callback"] == 1, ["received_callback", "job_city"]].groupby("job_city").count()
+
+df = one_hot_encoder(df, binary_cols, drop_first=True)
+
+df.info()
+
+df.loc[df["received_callback"] == 1, ["received_callback", "has_email_address"]].groupby("has_email_address").count()
+
+for col in [col for col in df.columns if df[col].dtypes == "object"]:
+    print("Col name: " + str(col))
+    print(df[col].nunique())
+
+df.loc[df["received_callback"] == 1, ["received_callback", "job_industry"]].groupby("job_industry").count()
+df.loc[df["received_callback"] == 1, ["received_callback", "job_req_school"]].groupby("job_req_school").count()
+df.loc[df["received_callback"] == 1, ["received_callback", "job_ownership"]].groupby("job_ownership").count()
+df.loc[df["received_callback"] == 1, ["received_callback", "job_type"]].groupby("job_type").count()
+
+df.groupby("job_ownership").agg({"received_callback": "mean"})
+
+df.drop(["job_ad_id"])
+
+temp_df = df.groupby("received_callback")["race_white"].value_counts(normalize=True).mul(100).rename("percent").reset_index()
+fig = plt.figure(figsize=(6,7))
+g = sns.barplot(x=temp_df["received_callback"], y=temp_df["percent"], hue=temp_df["race_white"], dodge=True, palette="viridis", ci=None)
+g.yaxis.set_minor_locator(AutoMinorLocator(2))
+show_values(g)
+g.tick_params(which="both", width=2)
+g.tick_params(which="major", length=7)
+g.tick_params(which="minor", length=4)
+plt.show()
