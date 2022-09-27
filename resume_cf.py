@@ -242,6 +242,9 @@ df = resume.copy()
 check_df(df)
 
 df = df.dropna(axis=1)
+df.columns
+df.drop(["job_ad_id", "job_equal_opp_employer", "job_ownership", "job_req_any", "job_req_communication", "job_req_computer",
+         "job_req_organization","job_req_education", "job_req_school", "firstname", "military", "years_college"], axis=1, inplace=True)
 
 binary_cols = [col for col in df.columns if df[col].nunique() == 2 and df[col].dtypes == "object"]
 
@@ -249,6 +252,7 @@ df.loc[df["received_callback"] == 1, ["received_callback", "job_city"]].groupby(
 
 df = one_hot_encoder(df, binary_cols, drop_first=True)
 
+[col for col in df.columns if df[col].nunique() == 2]
 df.info()
 
 df.loc[df["received_callback"] == 1, ["received_callback", "has_email_address"]].groupby("has_email_address").count()
@@ -289,3 +293,69 @@ g.tick_params(which="major", length=7)
 g.tick_params(which="minor", length=4)
 g.legend(loc="upper right", labels=["Female", "Male"])
 plt.show()
+
+df.drop("job_ad_id", axis=1, inplace=True)
+cat_cols = [col for col in df.columns if df[col].dtypes == "object"]
+num_cols = [col for col in df.columns if df[col].dtypes != "object"]
+
+for col in num_cols:
+    target_summary_with_num(df, col, "received_callback")
+
+for col in cat_cols:
+    target_summary_with_cat(df, "received_callback", col)
+
+df = one_hot_encoder(df, [col for col in df.columns if df[col].dtypes == "object"], drop_first=True)
+
+df.info()
+
+X = df.drop("received_callback", axis=1)
+y = df["received_callback"]
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import GridSearchCV, cross_validate, StratifiedKFold
+
+
+## To take a different approach towards imbalance of the data in respect to churn
+## we may change the class_weight accordingly and search through best values for F1 score
+
+lr = LogisticRegression(max_iter=1000, random_state=26)
+
+#Setting the range for class weights
+weights = np.linspace(0.0,0.99,200)
+
+#Creating a dictionary grid for grid search
+param_grid = {'class_weight': [{0:x, 1:1.0-x} for x in weights]}
+
+#Fitting grid search to the train data with 5 folds
+gridsearch = GridSearchCV(estimator= lr,
+                          param_grid= param_grid,
+                          cv=StratifiedKFold(),
+                          n_jobs=-1,
+                          scoring='f1',
+                          verbose=2).fit(X, y)
+
+#Plotting the score for different values of weight
+fig = plt.figure(figsize=(12,8))
+weight_data = pd.DataFrame({ 'score': gridsearch.cv_results_['mean_test_score'], 'weight': (1- weights)})
+sns.lineplot(weight_data['weight'], weight_data['score'])
+plt.xlabel('Weight for class 1')
+plt.ylabel('F1 score')
+plt.xticks([round(i/10,1) for i in range(0,11,1)])
+plt.title('Scoring for different class weights', fontsize=24)
+plt.show()
+
+weight_data.sort_values(by="score", ascending=False).iloc[0, :]
+
+lr = LogisticRegression(max_iter=1000, random_state=26, class_weight={0: (1-.871), 1: .871})
+
+cv_results = cross_validate(lr,
+                            X, y,
+                            cv=5,
+                            scoring=["f1", "accuracy", "precision", "recall"])
+
+cv_results['test_accuracy'].mean()
+cv_results['test_precision'].mean()
+cv_results['test_recall'].mean()
+cv_results["test_f1"].mean()
+
+
+from lightgbm import LGBMRegressor
